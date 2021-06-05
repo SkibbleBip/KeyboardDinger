@@ -260,13 +260,35 @@ int main(void)
 
 
                 Status_t status;
-                read(g_fd, &event, sizeof(struct input_event));
+                if(read(g_fd, &event, sizeof(struct input_event)) < 1){
                 /*Read an event */
+                        syslog(LOG_ERR,
+                                "Failed to read event file %s",
+                                strerror(errno)
+                                );
+                        failedShutdown();
+
+                }
                 if(cmpEventVals(event, EV_KEY, KEY_CAPSLOCK, HIGH)){
                 /*on Caps lock depressed*/
-
-                        read(g_fd, &event, sizeof(struct input_event));
-                        read(g_fd, &event, sizeof(struct input_event));
+                        //There's probably a better way to do this,
+                        //but at least this gives some kind of protection
+                        //in the event the event file cant be read
+                        if(read(g_fd, &event, sizeof(struct input_event)) < 1){
+                                syslog(LOG_ERR,
+                                        "Failed to read event file %s",
+                                        strerror(errno)
+                                        );
+                                failedShutdown();
+                        }
+                        //read(g_fd, &event, sizeof(struct input_event));
+                        if(read(g_fd, &event, sizeof(struct input_event)) < 1){
+                                syslog(LOG_ERR,
+                                        "Failed to read event file %s",
+                                        strerror(errno)
+                                        );
+                                failedShutdown();
+                        }
                         /*For some reason the event pipe only gives off a single
                         *event at one time. so we need to burn an event
                         */
@@ -286,8 +308,21 @@ int main(void)
                 }
                 if(cmpEventVals(event, EV_KEY, KEY_CAPSLOCK, LOW)){
                 /*On Caps Lock released*/
-                        read(g_fd, &event, sizeof(struct input_event));
-                        read(g_fd, &event, sizeof(struct input_event));
+                        if(read(g_fd, &event, sizeof(struct input_event)) < 1){
+                                syslog(LOG_ERR,
+                                        "Failed to read event file %s",
+                                        strerror(errno)
+                                        );
+                                failedShutdown();
+                        }
+                        //read(g_fd, &event, sizeof(struct input_event));
+                        if(read(g_fd, &event, sizeof(struct input_event)) < 1){
+                                syslog(LOG_ERR,
+                                        "Failed to read event file %s",
+                                        strerror(errno)
+                                        );
+                                failedShutdown();
+                        }
                         /*burn an unwanted event*/
                         if(cmpEventVals(event, EV_LED, MSC_PULSELED, LOW)){
                         /*if LED was set off*/
