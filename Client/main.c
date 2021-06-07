@@ -447,7 +447,6 @@ void pollEvent(Sound_Device *dev/*, bool *stuck*/){
                 if(*stuck == false){
                         *stuck = true;
                         syslog(LOG_ERR, "Pipe is disconnected!\n");
-                        printf("fart\n");
 
                 }
 
@@ -455,9 +454,7 @@ void pollEvent(Sound_Device *dev/*, bool *stuck*/){
                 close(g_pipeLocation);
                 //g_pipeLocation = -1;
                 do{
-                        printf("gay\n");
                         g_pipeLocation = open(CAPS_FILE_DESC, O_RDONLY);
-                        printf("pee\n");
                         //Crack cocaine hack that detects when the server goes
                         //offline
                 }while(g_pipeLocation <0);
