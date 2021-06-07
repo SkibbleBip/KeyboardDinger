@@ -20,6 +20,8 @@
 #include <sys/stat.h>
 #include <sys/file.h>
 #include <pwd.h>
+#include <dirent.h>
+
 
 #include "CapsOn.h"
 #include "CapsOff.h"
@@ -54,14 +56,18 @@ void pollEvent(Sound_Device *dev/*, bool *stuck*/);
 /***************************************************************************
 * void getPIDlocation(char* in)
 * Author: SkibbleBip
-* Date: 05/25/2021
-* Description: Function that generates the location the PID file is stored
+* Date: 05/25/2021      v1: Initial
+* Date: 06/07/2021      v2: sets input to NULL if invalid directory
+* Description: Function that generates the location the PID file is stored.
+*       Returns a valid string if the directory is valid, or NULL if the
+*       directory is invalid.
 *
 * Parameters:
 *        in     I/O     char*   Input char pointer to be changed
 **************************************************************************/
 void getPIDlocation(char* in)
 {
+
         memcpy(in, "/var/run/user/", 14);
         /*Copy the string into the input*/
         char tmp[50];
@@ -69,11 +75,27 @@ void getPIDlocation(char* in)
         /*get the UID of the current user*/
         memcpy(in+14, tmp, strlen(tmp));
         /*Copy UID into the input*/
+
+        /*check if the folder exists*/
+        DIR* dir = opendir(in);
+
+        if(!dir){
+        /*if the directory doesn't exist, then set the input as NULL*/
+                in = NULL;
+                return;
+        }
+
+        if(0 != closedir(dir)){
+                syslog(LOG_ALERT,"Failed to close %s: %s",in,strerror(errno));
+        }
+
+
         memcpy(in+14+strlen(tmp), "/CapsLockClient.pid", 20);
         /*terminate the string with the name of the PID file*/
 
 
 }
+
 /***************************************************************************
 * void shutdown(int sig)
 * Author: SkibbleBip
@@ -203,12 +225,21 @@ int main(void)
         getPIDlocation(pid_location);
         /*Obtain the PID location*/
 
+
+        if(pid_location == NULL){
+        /*If the default PID location is invalid, then fall back to backup
+        *PID location in the tmp folder.
+        */
+                memcpy(pid_location, "/tmp/CapsLockClient.pid", 23);
+        }
+
+
         if(!PID_Lock(pid_location, &g_pidfile)){
         /*if the PID file is failed to be created, then the daemon is already
         * running
         */
                 syslog(LOG_ERR, "Failure to create PID file\n");
-                //failedShutdown();
+                failedShutdown();
         }
         else{
                 char toWrite[20];
