@@ -259,6 +259,7 @@ int main(void)
         }
         if(setup(&device) == 0){
         /*Set up the sound PCM device*/
+                syslog(LOG_ERR, "Failed to set up sound devices: %m");
                 failedShutdown();
         }
         /*Signal for closing application*/
