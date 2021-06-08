@@ -73,14 +73,15 @@ void getPIDlocation(char* in)
         char tmp[50];
         snprintf(tmp, 50, "%d", getuid());
         /*get the UID of the current user*/
-        memcpy(in+14, tmp, strlen(tmp));
-        /*Copy UID into the input*/
+        memcpy(in+14, tmp, strlen(tmp)+1);
+        /*Copy UID (and NULL terminator)into the input*/
 
         /*check if the folder exists*/
         DIR* dir = opendir(in);
 
-        if(!dir){
+        if(NULL==dir){
         /*if the directory doesn't exist, then set the input as NULL*/
+                syslog(LOG_NOTICE, "%s does not exist\n", in);
                 in = NULL;
                 return;
         }
@@ -92,7 +93,7 @@ void getPIDlocation(char* in)
 
         memcpy(in+14+strlen(tmp), "/CapsLockClient.pid", 20);
         /*terminate the string with the name of the PID file*/
-
+        syslog(LOG_NOTICE, "PID file is %s\n", in);
 
 }
 
@@ -230,6 +231,9 @@ int main(void)
         /*If the default PID location is invalid, then fall back to backup
         *PID location in the tmp folder.
         */
+                syslog(LOG_ALERT, "Could not write PID to default location, \
+                        defaulting to /tmp/CapsLockClient.pid"
+                        );
                 memcpy(pid_location, "/tmp/CapsLockClient.pid", 23);
         }
 
@@ -272,6 +276,10 @@ int main(void)
                 g_pipeLocation = open(CAPS_FILE_DESC, O_RDONLY);
         /*cycle until a valid file descriptor is detected (the pipe is found)*/
         }while(g_pipeLocation <0);
+
+
+
+
 
         uid_t uid = getuid();
         /*Get the UID of the client's */
