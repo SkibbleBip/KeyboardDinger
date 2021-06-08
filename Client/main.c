@@ -58,8 +58,10 @@ void pollEvent(Sound_Device *dev/*, bool *stuck*/);
 * Author: SkibbleBip
 * Date: 05/25/2021      v1: Initial
 * Date: 06/07/2021      v2: sets input to NULL if invalid directory
+* Date: 06/08/2021      v3: Instead of setting to NULL, it now changes the
+*                               string to 0-length
 * Description: Function that generates the location the PID file is stored.
-*       Returns a valid string if the directory is valid, or NULL if the
+*       Returns a valid string if the directory is valid, or 0-length if the
 *       directory is invalid.
 *
 * Parameters:
@@ -80,9 +82,9 @@ void getPIDlocation(char* in)
         DIR* dir = opendir(in);
 
         if(NULL==dir){
-        /*if the directory doesn't exist, then set the input as NULL*/
+        /*if the directory doesn't exist, then set the input as blank*/
                 syslog(LOG_NOTICE, "%s does not exist\n", in);
-                in = NULL;
+                in[0] = '\000';
                 return;
         }
 
@@ -94,7 +96,6 @@ void getPIDlocation(char* in)
         memcpy(in+14+strlen(tmp), "/CapsLockClient.pid", 20);
         /*terminate the string with the name of the PID file*/
         syslog(LOG_NOTICE, "PID file is %s\n", in);
-
 }
 
 /***************************************************************************
@@ -225,17 +226,20 @@ int main(void)
 
         getPIDlocation(pid_location);
         /*Obtain the PID location*/
+        pid_location[0] = '\000';
 
-
-        if(pid_location == NULL){
+        if(pid_location[0] == '\000'){
         /*If the default PID location is invalid, then fall back to backup
         *PID location in the tmp folder.
         */
-                syslog(LOG_ALERT, "Could not write PID to default location, \
-                        defaulting to /tmp/CapsLockClient.pid"
+                memcpy(pid_location, "/tmp/CapsLockClient.pid", 24);
+                syslog(LOG_ALERT,
+                "Could not write PID to default location, defaulting to %s\n",
+                pid_location
                         );
-                memcpy(pid_location, "/tmp/CapsLockClient.pid", 23);
+
         }
+
 
 
         if(!PID_Lock(pid_location, &g_pidfile)){
