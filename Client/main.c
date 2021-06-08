@@ -89,7 +89,7 @@ void getPIDlocation(char* in)
         }
 
         if(0 != closedir(dir)){
-                syslog(LOG_ALERT,"Failed to close %s: %s",in,strerror(errno));
+                syslog(LOG_ALERT,"Failed to close %s: %m", in);
         }
 
 
@@ -122,7 +122,7 @@ void shutdown(int sig){
         /*Obtain the ID location of the client service*/
         if(remove(buff) != 0){
         /*attempt to remove PID file*/
-                syslog(LOG_ERR, "Failed to remove PID file: %s!\n", strerror(errno));
+                syslog(LOG_ERR, "Failed to remove PID file: %m");
         }
 
 	syslog(LOG_NOTICE, "Closed. Goodbye!");
@@ -156,8 +156,8 @@ void failedShutdown(void)
         if(remove(buff) != 0){
         /*remove the PID file. If failed, syslog the error and exit*/
                 syslog(LOG_ERR,
-                        "Failed to remove PID file: %s!\n",
-                        strerror(errno)
+                        "Failed to remove PID file: %m!\n"//,
+                        //strerror(errno)
                 );
         }
         exit(-1);
@@ -185,19 +185,19 @@ int main(void)
 
         /*close the parent*/
         if(pid < 0){
-                syslog(LOG_ERR, "Failed to fork%s\n", strerror(errno));
+                syslog(LOG_ERR, "Failed to fork: %m");
                 exit(-1);
         }if(pid>0){
                 syslog(LOG_NOTICE, "Successfully forked daemon\n");
                 exit(0);
         }if(setsid() <0){
-                syslog(LOG_ERR, "Failed to setsid %s", strerror(errno));
+                syslog(LOG_ERR, "Failed to setsid: %m");
                 exit(-1);
         }
         pid = fork();
         /*Fork second time*/
         if(pid < 0){
-                syslog(LOG_ERR, "Failed to fork%s\n", strerror(errno));
+                syslog(LOG_ERR, "Failed to fork: %m");
                 exit(-1);
         }if(pid>0){
                 syslog(LOG_NOTICE, "Successfully forked second time\n");
@@ -207,10 +207,7 @@ int main(void)
 
         if(chdir("/") < 0){
         /*Change the directory to root*/
-                syslog(LOG_ERR,
-                        "Failed to change to root %s\n",
-                        strerror(errno)
-                        );
+                syslog(LOG_ERR, "Failed to change to root: %m");
                 failedShutdown();
         }
         umask(0);
@@ -255,10 +252,7 @@ int main(void)
                 snprintf(toWrite, 20, "%d", getpid());
                 if(0 > write(g_pidfile, toWrite, strlen(toWrite))){
                 /*Write PID to PID file*/
-                        syslog(LOG_ERR,
-                        "Failed to write to PID file%s\n",
-                        strerror(errno)
-                        );
+                        syslog(LOG_ERR, "Failed to write to PID file: %m");
                         failedShutdown();
                 }
 
@@ -284,9 +278,7 @@ int main(void)
         /*Open the FIFO*/
         if(g_pipeLocation == -1){
         /*If invalid FIFO, then display error*/
-                syslog(LOG_ERR, "Failed to open Caps File FIFO %s\n",
-                        strerror(errno)
-                        );
+                syslog(LOG_ERR, "Failed to open Caps File FIFO: %m");
                 failedShutdown();
         }
 
@@ -485,10 +477,7 @@ void pollEvent(Sound_Device *dev/*, bool *stuck*/){
         /*If the pipe was not able to be read, then a failure has occured,
         * close out of the daemon
         */
-                syslog(LOG_ERR,
-                        "Failed to read the Caps Lock Pipe %s\n",
-                        strerror(errno)
-                );
+                syslog(LOG_ERR, "Failed to read the Caps Lock Pipe: %m");
                 failedShutdown();
 
         }
