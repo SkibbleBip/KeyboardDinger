@@ -271,24 +271,24 @@ int main(void)
                 "Opening Caps Lock detection client for %s\n",
                 getlogin()
                 );
-        g_pipeLocation = -1;
-        do{
-                g_pipeLocation = open(CAPS_FILE_DESC, O_RDONLY);
-        /*cycle until a valid file descriptor is detected (the pipe is found)*/
-        }while(g_pipeLocation <0);
 
-
-
-
+        while(open(CAPS_FILE_DESC, O_EXCL) == -1)
+                ;
+        /*while the file does not exist, continue waiting*/
+        g_pipeLocation = open(CAPS_FILE_DESC, O_RDONLY);
+        /*Open the FIFO*/
+        if(g_pipeLocation == -1){
+        /*If invalid FIFO, then display error*/
+                syslog(LOG_ERR, "Failed to open Caps File FIFO %s\n",
+                        strerror(errno)
+                        );
+                failedShutdown();
+        }
 
         uid_t uid = getuid();
         /*Get the UID of the client's */
         struct passwd *pwd = getpwuid(uid);
         syslog(LOG_NOTICE, "Client connected to server for %s\n", pwd->pw_name);
-
-
-
-        //bool isStuck = false;
 
         while(1){
         /*loop until told to stop*/
