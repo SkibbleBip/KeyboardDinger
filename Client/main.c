@@ -141,6 +141,7 @@ void shutdown(int sig){
 **************************************************************************/
 void failedShutdown(void)
 {
+        syslog(LOG_CRIT, "Requesting shutdown due to failure\n");
         close(g_pipeLocation);
         /*close the pipe*/
         close(g_pidfile);
