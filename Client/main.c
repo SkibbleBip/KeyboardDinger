@@ -21,6 +21,7 @@
 #include <sys/file.h>
 #include <pwd.h>
 #include <dirent.h>
+#include <utmp.h>
 
 
 #include "CapsOn.h"
@@ -51,6 +52,7 @@ snd_pcm_t *g_pcmHandle;
 int setup(Sound_Device *dev);
 void playSound(const unsigned char* sound, const long int size, Sound_Device *dev);
 void pollEvent(Sound_Device *dev/*, bool *stuck*/);
+int checkLoggedIn(void);
 
 
 /***************************************************************************
@@ -221,6 +223,10 @@ int main(void)
                 close(i);
         }
 
+        while(!checkLoggedIn())
+                ;
+        /*wait until user has fully logged in*/
+
 
         getPIDlocation(pid_location);
         /*Obtain the PID location*/
@@ -316,7 +322,6 @@ int main(void)
 int setup(Sound_Device *dev){
         uint rate = RATE;
         /*obtain the temporary value of the rate*/
-
         if(snd_pcm_open(
         /*open the default playback device and return it to the pcm handle*/
                 &(dev->pcm_Handle),
@@ -326,11 +331,9 @@ int setup(Sound_Device *dev){
                 ) < 0)
                 return 0;
 
-
         snd_pcm_hw_params_alloca(&(dev->params));
         snd_pcm_hw_params_any(dev->pcm_Handle, dev->params);
         /*Allocate parameters and apply them to the pcm device*/
-
         if(snd_pcm_hw_params_set_access(
         /*Set access mode for the PCM device*/
                 dev->pcm_Handle,
@@ -372,6 +375,7 @@ int setup(Sound_Device *dev){
 
         /*Allocate the buffer to hold a single period time length*/
 	snd_pcm_hw_params_get_period_size(dev->params, &(dev->frames), 0);
+
 	dev->buff_size = dev->frames * CHANNELS *2;
 	/*define the buffer size in accordance to the frames and channels size*/
 
@@ -506,6 +510,48 @@ void pollEvent(Sound_Device *dev/*, bool *stuck*/){
 
 
 
+}
+
+/***************************************************************************
+* int checkLoggedIn(void)
+* Author: Skibblebip
+* Date: 06/09/2021
+* Description: Checks if the user running the client has logged into a TTY or
+*               other terminal
+*
+* Parameters:
+*        checkLoggedIn  O/P     int     Boolean int that determines if user was
+*                                               logged in or not yet
+**************************************************************************/
+int checkLoggedIn(void){
+
+        struct utmp *tmp;
+        setutent();
+        /*set the utmp file pointer to the front*/
+
+        tmp = getutent();
+        /*obtain the first utmp struct*/
+
+        while(tmp != NULL){
+        /*while the end of the utmp has not been reached, check each obtained
+        * struct if they are a user_process
+        */
+                if(tmp->ut_type == USER_PROCESS){
+                        if(0 == strcmp(tmp->ut_user, getlogin())){
+                        /*if the username of the process is the same as the
+                        *client's log-in name, then we know the user has logged
+                        *in fully.
+                        */
+                                return 1;
+                        }
+                }
+                tmp = getutent();
+                /*get next utmp struct*/
+
+        }
+
+        return 0;
+        /*The user was found to be not logged in yet*/
 }
 
 
