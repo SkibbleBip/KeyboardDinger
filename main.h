@@ -11,6 +11,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 /*Standard IO and libraries*/
+#include <errno.h>
+#include <unistd.h>
+#include <string.h>
 
 #ifndef MAIN_H_INCLUDED
 #define MAIN_H_INCLUDED
@@ -51,7 +54,7 @@ int PID_Lock(char* path, int *pidfile)
         /*Open the PID file*/
         if(*pidfile < 0){
         /*if failed to open, return with error*/
-                syslog(LOG_ERR, "Failed to open PID file %s\n", strerror(errno));
+                syslog(LOG_ERR, "Failed to open PID file %m");
                 return 0;
         }
         int lock = flock(*pidfile, LOCK_EX|LOCK_NB);

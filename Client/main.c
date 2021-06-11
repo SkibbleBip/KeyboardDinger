@@ -14,6 +14,8 @@
 *                               data size, and PCM device as params
 * pollEvent             -Function that polls the pipe for new information on
 *                               the status of the keyboard dings
+* checkLoggedIn         -Function that polls the utmp file until the user has
+*                               logged in
 ***************************************************************************/
 
 #include <alsa/asoundlib.h>
@@ -177,6 +179,8 @@ void failedShutdown(void)
 int main(void)
 {
 
+
+
         Sound_Device device;
         /*Struct of ALSA properties*/
         char pid_location[50];
@@ -226,6 +230,7 @@ int main(void)
         while(!checkLoggedIn())
                 ;
         /*wait until user has fully logged in*/
+        ///TODO: may not even need this. Also, it' eats up CPU usage.
 
 
         getPIDlocation(pid_location);
@@ -263,6 +268,17 @@ int main(void)
                 }
 
         }
+
+        while(open("run/user/1000/pulse/pid", O_EXCL) == -1)
+                ;
+        /**WARNING: DISGUSTING HACK! This is a hack to see if pulseaudio server
+        is running. This eats up a ton of cpu usage until the server has started.
+        This is only temporary for debugging. Also 1000 is not always the user's
+        UID, this just happens to be what mine is. Until I figure out a cleaner
+        way to not hijack the sound card, this will remain here for testing**/
+
+        //sleep(5);
+
         if(setup(&device) == 0){
         /*Set up the sound PCM device*/
                 syslog(LOG_ERR, "Failed to set up sound devices: %m");
@@ -452,14 +468,10 @@ void pollEvent(Sound_Device *dev/*, bool *stuck*/){
         ///the server daemon or pipe goes offline, and can start back up when
         ///the server goes back online
         /*if(size == 0){
-
-
                 if(*stuck == false){
                         *stuck = true;
                         syslog(LOG_ERR, "Pipe is disconnected!\n");
-
                 }
-
                 printf("one\n");
                 close(g_pipeLocation);
                 //g_pipeLocation = -1;
@@ -468,8 +480,6 @@ void pollEvent(Sound_Device *dev/*, bool *stuck*/){
                         //Crack cocaine hack that detects when the server goes
                         //offline
                 }while(g_pipeLocation <0);
-
-
         }*/
         if(size == 0){
         /*If 0 bytes were read, then the server is no longer writing to the
@@ -553,5 +563,3 @@ int checkLoggedIn(void){
         return 0;
         /*The user was found to be not logged in yet*/
 }
-
-
