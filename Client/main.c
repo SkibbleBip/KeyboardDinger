@@ -180,6 +180,26 @@ int main(void)
 {
 
 
+        if(getenv("XDG_RUNTIME_DIR")==NULL){
+        /*Check if the rutime directory is defined in the environment, as ALSA
+        * API needs it defined in order to initialize properly
+        */
+                syslog(LOG_NOTICE,
+                "XDG_RUNTIME_DIR was not defined, defining it ourselves..."
+                );
+
+                if(setenv("XDG_RUNTIME_DIR", "/run/user/1000", 1 ) == -1){
+                /*if it's not defined, define it ourself. If it STILL wont
+                *define, display an error and exit
+                */
+                ///TODO: implement a feature where it finds the user's UID,
+                ///not every user is set as 1000.
+                        syslog(LOG_ERR, "Failed to set runtime directory: %m");
+                        exit(-1);
+                }
+        }
+
+
 
         Sound_Device device;
         /*Struct of ALSA properties*/
@@ -230,7 +250,7 @@ int main(void)
         while(!checkLoggedIn())
                 ;
         /*wait until user has fully logged in*/
-        ///TODO: may not even need this. Also, it' eats up CPU usage.
+        ///TODO: may not even need this. Also, it eats up CPU usage.
 
 
         getPIDlocation(pid_location);
