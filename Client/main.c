@@ -52,7 +52,7 @@ int g_pidfile;
 volatile int g_pipeLocation;
 snd_pcm_t *g_pcmHandle;
 
-
+/*Definitions of functions*/
 int setup(Sound_Device *dev);
 void playSound(const unsigned char* sound, const long int size, Sound_Device *dev);
 void pollEvent(Sound_Device *dev/*, bool *stuck*/);
