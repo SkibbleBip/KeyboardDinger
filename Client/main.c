@@ -16,6 +16,8 @@
 *                               the status of the keyboard dings
 * checkLoggedIn         -Function that polls the utmp file until the user has
 *                               logged in
+* getUserDir            -Function that returns through a referenced parameter
+*                               the location of the User directory
 ***************************************************************************/
 
 #include <alsa/asoundlib.h>
@@ -55,118 +57,14 @@ int setup(Sound_Device *dev);
 void playSound(const unsigned char* sound, const long int size, Sound_Device *dev);
 void pollEvent(Sound_Device *dev/*, bool *stuck*/);
 int checkLoggedIn(void);
+void getUserDir(char* location);
+void getPIDlocation(char* in);
+void shutdown(int sig);
+void failedShutdown(void);
+
+int main(void);
 
 
-/***************************************************************************
-* void getPIDlocation(char* in)
-* Author: SkibbleBip
-* Date: 05/25/2021      v1: Initial
-* Date: 06/07/2021      v2: sets input to NULL if invalid directory
-* Date: 06/08/2021      v3: Instead of setting to NULL, it now changes the
-*                               string to 0-length
-* Description: Function that generates the location the PID file is stored.
-*       Returns a valid string if the directory is valid, or 0-length if the
-*       directory is invalid.
-*
-* Parameters:
-*        in     I/O     char*   Input char pointer to be changed
-**************************************************************************/
-void getPIDlocation(char* in)
-{
-
-        memcpy(in, "/var/run/user/", 14);
-        /*Copy the string into the input*/
-        char tmp[50];
-        snprintf(tmp, 50, "%d", getuid());
-        /*get the UID of the current user*/
-        memcpy(in+14, tmp, strlen(tmp)+1);
-        /*Copy UID (and NULL terminator)into the input*/
-
-        /*check if the folder exists*/
-        DIR* dir = opendir(in);
-
-        if(NULL==dir){
-        /*if the directory doesn't exist, then set the input as blank*/
-                syslog(LOG_NOTICE, "%s does not exist\n", in);
-                in[0] = '\000';
-                return;
-        }
-
-        if(0 != closedir(dir)){
-                syslog(LOG_ALERT,"Failed to close %s: %m", in);
-        }
-
-
-        memcpy(in+14+strlen(tmp), "/CapsLockClient.pid", 20);
-        /*terminate the string with the name of the PID file*/
-        syslog(LOG_NOTICE, "PID file is %s\n", in);
-}
-
-/***************************************************************************
-* void shutdown(int sig)
-* Author: SkibbleBip
-* Date: 05/23/2021
-* Description: Signal handler to process the shutdown procedures
-*
-* Parameters:
-*        sig    I/P     int     Signal value
-**************************************************************************/
-void shutdown(int sig){
-
-        syslog(LOG_NOTICE, "Received signal %d to exit\n", sig);
-        close(g_pipeLocation);
-        close(g_pidfile);
-        /*Close the pipe and PID file*/
-        snd_pcm_drain(g_pcmHandle);
-        snd_pcm_close(g_pcmHandle);
-        /*drain and close the PCM handle*/
-
-        char buff[100];
-        getPIDlocation(buff);
-        /*Obtain the ID location of the client service*/
-        if(remove(buff) != 0){
-        /*attempt to remove PID file*/
-                syslog(LOG_ERR, "Failed to remove PID file: %m");
-        }
-
-	syslog(LOG_NOTICE, "Closed. Goodbye!");
-	exit(0);
-
-
-}
-/***************************************************************************
-* void failedShutdown(void)
-* Author: SkibbleBip
-* Date: 06/03/2021
-* Description: Function that concludes the shutdown procedures in the event
-*       that an error were to occur
-*
-* Parameters:
-**************************************************************************/
-void failedShutdown(void)
-{
-        syslog(LOG_CRIT, "Requesting shutdown due to failure\n");
-        close(g_pipeLocation);
-        /*close the pipe*/
-        close(g_pidfile);
-        /*close the PID file (automatically unlocked)*/
-        snd_pcm_drain(g_pcmHandle);
-        snd_pcm_close(g_pcmHandle);
-        /*drain and close the PCM handle*/
-
-        char buff[100];
-        getPIDlocation(buff);
-        /*obtain the PID location*/
-        if(remove(buff) != 0){
-        /*remove the PID file. If failed, syslog the error and exit*/
-                syslog(LOG_ERR,
-                        "Failed to remove PID file: %m!\n"//,
-                        //strerror(errno)
-                );
-        }
-        exit(-1);
-
-}
 /***************************************************************************
 * int main(void)
 * Author: SkibbleBip
@@ -178,22 +76,22 @@ void failedShutdown(void)
 **************************************************************************/
 int main(void)
 {
-
-
         if(getenv("XDG_RUNTIME_DIR")==NULL){
         /*Check if the rutime directory is defined in the environment, as ALSA
         * API needs it defined in order to initialize properly
         */
+                char userDir[100];
+                getUserDir(userDir);
+                /*obtain the runtime directory*/
+
                 syslog(LOG_NOTICE,
                 "XDG_RUNTIME_DIR was not defined, defining it ourselves..."
                 );
 
-                if(setenv("XDG_RUNTIME_DIR", "/run/user/1000", 1 ) == -1){
+                if(setenv("XDG_RUNTIME_DIR", userDir, 1 ) == -1){
                 /*if it's not defined, define it ourself. If it STILL wont
                 *define, display an error and exit
                 */
-                ///TODO: implement a feature where it finds the user's UID,
-                ///not every user is set as 1000.
                         syslog(LOG_ERR, "Failed to set runtime directory: %m");
                         exit(-1);
                 }
@@ -289,15 +187,19 @@ int main(void)
 
         }
 
-        while(open("run/user/1000/pulse/pid", O_EXCL) == -1)
+        char pulse_pid[100];
+        getUserDir(pulse_pid);
+        /*obtain the location of the pulseaudio pid file*/
+
+        memcpy(pulse_pid+strlen(pulse_pid), "/pulse/pid", 11);
+        /*Complete the path of the PID file*/
+
+        while(open(pulse_pid, O_EXCL) == -1)
                 ;
         /**WARNING: DISGUSTING HACK! This is a hack to see if pulseaudio server
-        is running. This eats up a ton of cpu usage until the server has started.
-        This is only temporary for debugging. Also 1000 is not always the user's
-        UID, this just happens to be what mine is. Until I figure out a cleaner
-        way to not hijack the sound card, this will remain here for testing**/
-
-        //sleep(5);
+        is running. This eats up a ton of cpu usage until the PA server has
+        started. This is only temporary.
+        **/
 
         if(setup(&device) == 0){
         /*Set up the sound PCM device*/
@@ -316,7 +218,7 @@ int main(void)
 
         while(open(CAPS_FILE_DESC, O_EXCL) == -1)
                 ;
-        /*while the file does not exist, continue waiting*/
+        /*while the FIFO file does not exist, continue waiting*/
         g_pipeLocation = open(CAPS_FILE_DESC, O_RDONLY);
         /*Open the FIFO*/
         if(g_pipeLocation == -1){
@@ -583,3 +485,136 @@ int checkLoggedIn(void){
         return 0;
         /*The user was found to be not logged in yet*/
 }
+
+/***************************************************************************
+* void getUserDir(char* location)
+* Author: SkibbleBip
+* Date: 06/12/2021
+* Description: Function that generates the current user's runtime directory ie
+*       /var/run/user/X, where X is the user's UID
+*
+* Parameters:
+*        location       I/O     char*   pointer to string to change into the
+*                                               directory path and returned out
+*                                               through reference
+**************************************************************************/
+void getUserDir(char* location)
+{
+        memcpy(location, "/run/user/", 10);
+        /*Copy the string into the input*/
+        char tmp[50];
+        snprintf(tmp, 50, "%d", getuid());
+        /*get the UID of the current user*/
+        memcpy(location+10, tmp, strlen(tmp)+1);
+        /*Copy UID (and NULL terminator)into the input*/
+
+}
+
+/***************************************************************************
+* void getPIDlocation(char* in)
+* Author: SkibbleBip
+* Date: 05/25/2021      v1: Initial
+* Date: 06/07/2021      v2: sets input to NULL if invalid directory
+* Date: 06/08/2021      v3: Instead of setting to NULL, it now changes the
+*                               string to 0-length
+* Description: Function that generates the location the PID file is stored.
+*       Returns a valid string if the directory is valid, or 0-length if the
+*       directory is invalid.
+*
+* Parameters:
+*        in     I/O     char*   Input char pointer to be changed
+**************************************************************************/
+void getPIDlocation(char* in)
+{
+
+        getUserDir(in);
+        /*Obtain the location of the User directory*/
+
+        DIR* dir = opendir(in);
+        /*check if the directory exists*/
+
+        if(NULL==dir){
+        /*if the directory doesn't exist, then set the input as blank*/
+                syslog(LOG_NOTICE, "%s does not exist\n", in);
+                in[0] = '\000';
+                return;
+        }
+
+        if(0 != closedir(dir)){
+                syslog(LOG_ALERT,"Failed to close %s: %m", in);
+        }
+
+        //char tmp[100];
+        memcpy(in+strlen(in), "/CapsLockClient.pid", 20);
+        /*terminate the string with the name of the PID file*/
+        syslog(LOG_NOTICE, "PID file is %s\n", in);
+}
+
+/***************************************************************************
+* void shutdown(int sig)
+* Author: SkibbleBip
+* Date: 05/23/2021
+* Description: Signal handler to process the shutdown procedures
+*
+* Parameters:
+*        sig    I/P     int     Signal value
+**************************************************************************/
+void shutdown(int sig){
+
+        syslog(LOG_NOTICE, "Received signal %d to exit\n", sig);
+        close(g_pipeLocation);
+        close(g_pidfile);
+        /*Close the pipe and PID file*/
+        snd_pcm_drain(g_pcmHandle);
+        snd_pcm_close(g_pcmHandle);
+        /*drain and close the PCM handle*/
+
+        char buff[100];
+        getPIDlocation(buff);
+        /*Obtain the ID location of the client service*/
+        if(remove(buff) != 0){
+        /*attempt to remove PID file*/
+                syslog(LOG_ERR, "Failed to remove PID file: %m");
+        }
+
+	syslog(LOG_NOTICE, "Closed. Goodbye!");
+	exit(0);
+
+
+}
+/***************************************************************************
+* void failedShutdown(void)
+* Author: SkibbleBip
+* Date: 06/03/2021
+* Description: Function that concludes the shutdown procedures in the event
+*       that an error were to occur
+*
+* Parameters:
+**************************************************************************/
+void failedShutdown(void)
+{
+        syslog(LOG_CRIT, "Requesting shutdown due to failure\n");
+        close(g_pipeLocation);
+        /*close the pipe*/
+        close(g_pidfile);
+        /*close the PID file (automatically unlocked)*/
+        snd_pcm_drain(g_pcmHandle);
+        snd_pcm_close(g_pcmHandle);
+        /*drain and close the PCM handle*/
+
+        char buff[100];
+        getPIDlocation(buff);
+        /*obtain the PID location*/
+        if(remove(buff) != 0){
+        /*remove the PID file. If failed, syslog the error and exit*/
+                syslog(LOG_ERR,
+                        "Failed to remove PID file: %m!\n"//,
+                        //strerror(errno)
+                );
+        }
+        exit(-1);
+
+}
+
+
+
