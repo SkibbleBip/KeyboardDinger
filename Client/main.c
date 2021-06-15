@@ -26,6 +26,7 @@
 #include <pwd.h>
 #include <dirent.h>
 #include <utmp.h>
+#include <sys/inotify.h>
 
 
 #include "CapsOn.h"
@@ -61,6 +62,8 @@ void getUserDir(char* location);
 void getPIDlocation(char* in);
 void shutdown(int sig);
 void failedShutdown(void);
+int blockUntilLoggedIn(void);
+int blockForPA_PID(char* pidLocation);
 
 int main(void);
 
@@ -145,15 +148,19 @@ int main(void)
                 close(i);
         }
 
-        while(!checkLoggedIn())
-                ;
-        /*wait until user has fully logged in*/
-        ///TODO: may not even need this. Also, it eats up CPU usage.
+
+        if(0 == blockUntilLoggedIn()){
+        /*block until user has logged in*/
+                syslog(LOG_ERR, "Failed to wait for login: %m");
+                failedShutdown();
+
+        }
+
 
 
         getPIDlocation(pid_location);
         /*Obtain the PID location*/
-        pid_location[0] = '\000';
+        //pid_location[0] = '\000';
 
         if(pid_location[0] == '\000'){
         /*If the default PID location is invalid, then fall back to backup
@@ -194,11 +201,19 @@ int main(void)
         memcpy(pulse_pid+strlen(pulse_pid), "/pulse/pid", 11);
         /*Complete the path of the PID file*/
 
+        //if(blockForPA_PID(pulse_pid) == 0){
+        /*wait for the creation of the PulseAudio PID file*/
+        //        syslog(LOG_ERR, "Failed waiting for PulseAudio PID: %m");
+        //        failedShutdown();
+        //}
+
+
         while(open(pulse_pid, O_EXCL) == -1)
                 ;
-        /**WARNING: DISGUSTING HACK! This is a hack to see if pulseaudio server
-        is running. This eats up a ton of cpu usage until the PA server has
-        started. This is only temporary.
+        /**A HACK: this polls until the pulseaudio pid exists. This could
+        * be done better using blocking inotify's, but due to race conditions
+        * and overcomplicating things it might be easier to wait until the pid
+        * file exists. It doesn't take long anyway for pulseaudio to start
         **/
 
         if(setup(&device) == 0){
@@ -216,6 +231,8 @@ int main(void)
                 getlogin()
                 );
 
+
+        ///TODO: blocking waiting and not polling waiting for caps FIFO
         while(open(CAPS_FILE_DESC, O_EXCL) == -1)
                 ;
         /*while the FIFO file does not exist, continue waiting*/
@@ -456,6 +473,7 @@ void pollEvent(Sound_Device *dev/*, bool *stuck*/){
 *                                               logged in or not yet
 **************************************************************************/
 int checkLoggedIn(void){
+//utmp location: /run/utmp
 
         struct utmp *tmp;
         setutent();
@@ -485,6 +503,202 @@ int checkLoggedIn(void){
         return 0;
         /*The user was found to be not logged in yet*/
 }
+/***************************************************************************
+* int blockUntilLoggedIn(void)
+* Author: SkibbleBip
+* Date: 06/13/2021
+* Description: Uses inotify syscall to block until the user has logged in.
+*
+* Parameters: N/A
+**************************************************************************/
+int blockUntilLoggedIn(void)
+{
+
+        const size_t buff_size = sizeof(struct inotify_event) + NAME_MAX + 1;
+        /*obtain the size of the inotify event*/
+        struct inotify_event* event = (struct inotify_event*)malloc(buff_size);
+        /*dynamically allocate the inotify event*/
+        int fd, wd;
+        /*file decriptors of the initializer and watchdogs*/
+        fd = inotify_init();
+        /*Initialize the Inotify instance*/
+
+        if(fd < 0){
+        /*if failed to initialize, return false*/
+                return 0;
+        }
+
+        wd = inotify_add_watch(fd, "/run/utmp", IN_MODIFY);
+        /*add a watchdog for when the utmp file is modified*/
+
+        if(wd < 0)
+        /*if it failed to add the watch, return false*/
+                return 0;
+
+        u_char triggered = 0;
+        /*flag for if it detected the logged in user*/
+
+        do{
+                int ret = read(fd, event, buff_size);
+                /*block until an inotify event is read*/
+                if(ret < 0)
+                        return 0;
+
+                if(checkLoggedIn() == 1){
+                /*check if the user was logged in during the event. if they did,
+                * set the flag to true
+                */
+                        triggered = 1;
+                        //free(event);
+                }
+
+        }while(triggered == 0);
+        /*continue looping until the user has been verified that they are
+        * logged in
+        */
+
+
+        free(event);
+        /*free the event buffer*/
+        inotify_rm_watch(fd, wd);
+        /*remove the watchdog*/
+        close(fd);
+        /*close the inotify file descriptor*/
+
+        return 1;
+}
+/***************************************************************************
+* int blockForPA_PID(char* pidLocation)
+* Author: SkibbleBip
+* Date: 06/13/2021
+* Description: Function that blocks until the PulseAudio PID file is created,
+*               using inotify
+*
+* Parameters:
+*        pidLocation    I/P     char*   string of the location of the PID file
+**************************************************************************/
+int blockForPA_PID(char* pidLocation)
+///TODO: It may be to complicated to use this, might be easier to wait by
+///polling the PID file. Need to fix this to avoid race conditions and over-
+///engineering
+{
+        char dir[100];
+        strcpy(dir, pidLocation);
+        dir[strlen(dir) - 4] = '\000';
+        /*obtain just the "pulse" folder*/
+
+
+        const size_t buff_size = sizeof(struct inotify_event) + NAME_MAX + 1;
+        /*obtain the size of the inotify event*/
+        struct inotify_event* event = (struct inotify_event*)malloc(buff_size);
+        /*dynamically allocate the inotify event*/
+        int fd, wd;
+        /*file decriptors of the initializer and watchdogs*/
+        fd = inotify_init();
+        /*Initialize the Inotify instance*/
+
+        if(fd < 0){
+        /*if failed to initialize, return false*/
+                return 0;
+        }
+
+        wd = inotify_add_watch(fd, dir, IN_CREATE);
+        /*add a watchdog for when the pulseaaudio PID file is created*/
+
+        if(wd < 0)
+        /*if it failed to add the watch, return false*/
+                return 0;
+
+
+        do{
+
+                int ret = read(fd, event, buff_size);
+                /*block until an inotify event is read*/
+                if(ret < 0)
+                        return 0;
+
+        }while(0 != strcmp("pid", event->name));
+
+        free(event);
+        /*free the event buffer*/
+        inotify_rm_watch(fd, wd);
+        /*remove the watchdog*/
+        close(fd);
+        /*close the inotify file descriptor*/
+
+        return 1;
+
+}
+
+
+/*INCOMPLETE*/
+int wait_for_dir_creation(int fd, char* path, char* objName)
+{
+
+        const size_t buff_size = sizeof(struct inotify_event) + NAME_MAX + 1;
+        /*obtain the size of the inotify event*/
+        struct inotify_event* event = (struct inotify_event*)malloc(buff_size);
+        /*dynamically allocate the inotify event*/
+
+        _Atomic int wd = inotify_add_watch(fd, path, IN_CREATE);
+
+        if(wd < 0 && errno == ENOENT){
+        /*if it failed to create watchdog because the parent dir does not
+        * exist, then create a new watchdog for the parent
+        */
+                char tmp[50];
+                char tmpObj[50];
+                strcpy(tmp, path);
+
+                ///TODO: verify that this is correct formatting
+                int q = strlen(tmp);
+                while(tmp[q]!='/')
+                        q--;
+
+                memcpy(tmpObj, tmp+q+1, strlen(tmp)-q);
+                tmp[q] = '\000';
+                /*Attempt to split the waiting dir/file up by name and location
+                * path
+                */
+
+                int rep = wait_for_dir_creation(fd, tmp, tmpObj);
+                /*if it had failed to wait for file/dir, then get the parent
+                * dir and pass it as a child to the waiting function
+                */
+
+                return rep;
+
+        }
+        else if(wd < 0){
+        /*otherwise, it failed for other reasons*/
+                return 0;
+        }
+
+        do{
+
+
+        int reply = read(fd, event, buff_size);
+        ///TODO: Possible race condition, need to garuntee that the dir/file
+        ///hasn't been created between the time of checking and waiting
+
+        if(reply < 0)
+                return 0;
+
+        }while(0 != strcmp(event->name, objName));
+
+        free(event);
+        /*free the event buffer*/
+        inotify_rm_watch(fd, wd);
+        /*remove the watchdog*/
+        close(fd);
+        /*close the inotify file descriptor*/
+
+        return 1;
+
+
+}
+
+
 
 /***************************************************************************
 * void getUserDir(char* location)
@@ -615,6 +829,8 @@ void failedShutdown(void)
         exit(-1);
 
 }
+
+
 
 
 
