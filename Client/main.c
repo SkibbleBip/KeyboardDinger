@@ -236,7 +236,11 @@ int main(void)
         while(open(CAPS_FILE_DESC, O_EXCL) == -1)
                 ;
         /*while the FIFO file does not exist, continue waiting*/
+
+
         g_pipeLocation = open(CAPS_FILE_DESC, O_RDONLY);
+
+
         /*Open the FIFO*/
         if(g_pipeLocation == -1){
         /*If invalid FIFO, then display error*/
@@ -378,6 +382,7 @@ void playSound(const unsigned char* sound, const long int size,Sound_Device *dev
                 ///TODO: Make this look less like crap
 
 	}
+
         free(buffer);
         //free the dynamic buffer
 
@@ -396,13 +401,14 @@ void playSound(const unsigned char* sound, const long int size,Sound_Device *dev
 *                                       properties
 **************************************************************************/
 void pollEvent(Sound_Device *dev/*, bool *stuck*/){
-        unsigned char received;
+        //unsigned char received;
+        Status_t received;
         /*The byte of the received data from the pipe*/
         int size;
         /*The length of bytes read*/
 
 
-        size = read(g_pipeLocation, &received, 1);
+        size = read(g_pipeLocation, &received, sizeof(Status_t));
         ///TODO: Make it so the client daemon can continue running idle when
         ///the server daemon or pipe goes offline, and can start back up when
         ///the server goes back online
@@ -513,6 +519,11 @@ int checkLoggedIn(void){
 **************************************************************************/
 int blockUntilLoggedIn(void)
 {
+
+        if(checkLoggedIn())
+        /*if user is already logged in, then return true*/
+                return 1;
+
 
         const size_t buff_size = sizeof(struct inotify_event) + NAME_MAX + 1;
         /*obtain the size of the inotify event*/

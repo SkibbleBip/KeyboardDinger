@@ -6,7 +6,6 @@
 *                               and cleanly eit with status -1 on occurance of
 *                               an error
 * shutdown              -Signal handler to process the shutdown procedures
-* fixPipe               -Function that handles broken pipes
 * main                  -The main function
 ***************************************************************************/
 
@@ -28,7 +27,7 @@
 
 
 /*Global variables to handles and parameters*/
-volatile int g_pipeLocation;
+int g_pipeLocation;
 /*client-server pipe*/
 int g_fd;
 /*keyboard file descriptor*/
@@ -57,10 +56,7 @@ void failedShutdown(void)
 
         if(remove("/var/run/CapsLockServer.pid") != 0){
         /*remove the PID file*/
-                syslog(LOG_ERR,
-                "Failed to remove PID file: %s!\n",
-                strerror(errno)
-                );
+                syslog(LOG_ERR, "Failed to remove PID file: %m");
         }
 
         exit(-1);
@@ -85,7 +81,7 @@ void shutdown(int sig)
         /*Unlink the caps file pipe*/
         unlink(CAPS_FILE_DESC);
         if(remove("/var/run/CapsLockServer.pid") != 0){
-                syslog(LOG_ERR, "Failed to remove PID file: %s!\n", strerror(errno));
+                syslog(LOG_ERR, "Failed to remove PID file: %m");
         }
 
 	syslog(LOG_NOTICE, "Closed. Goodbye!");
@@ -94,30 +90,6 @@ void shutdown(int sig)
 }
 
 
-
-/***************************************************************************
-* void fixPipe(int sig)
-* Author: SkibbleBip
-* Date: 05/23/2021
-* Description: Function that handles broken pipes
-*
-* Parameters:
-*        sig    I/P     int     Signal value that was triggered
-**************************************************************************/
-void fixPipe(int sig)
-{
-
-        syslog(LOG_ALERT, "Signal %d: Broken pipe detected!", sig);
-        unlink(CAPS_FILE_DESC);
-        mkfifo(CAPS_FILE_DESC, 0666);
-        /*Unlink and recreate the FIFO named pipe*/
-        g_pipeLocation = open(CAPS_FILE_DESC, O_WRONLY);
-        /*Reopen the FIFO pipe. This will wait until the pipe is re-connected*/
-
-        syslog(LOG_ALERT, "Pipe repaired!");
-
-
-}
 /***************************************************************************
 * int main(void)
 * Author: SkibbleBip
@@ -135,7 +107,7 @@ int main(void)
         pid_t pid = fork();
         /*Fork the first time*/
         if(pid < 0){
-                syslog(LOG_ERR, "Failed to fork%s\n", strerror(errno));
+                syslog(LOG_ERR, "Failed to fork: %m");
                 exit(-1);
                 /*If there was a problem forking, then display error and exit*/
         }
@@ -146,21 +118,15 @@ int main(void)
         }
         if(setsid() <0){
                 /*Otherwise, display error and exit*/
-                syslog(LOG_ERR, "Failed to setsid%s\n", strerror(errno));
+                syslog(LOG_ERR, "Failed to setsid: %m");
                 exit(-1);
         }
 
-
-        /*Signal for closing application*/
-        signal(SIGQUIT, shutdown);
-        /*Signal for if and when the pipe breaks*/
-        signal(SIGPIPE, fixPipe);
-        /*Fork the second time*/
         pid = fork();
 
 
         if(pid < 0){
-                syslog(LOG_ERR, "Failed to fork%s\n", strerror(errno));
+                syslog(LOG_ERR, "Failed to fork: %m");
                 exit(-1);
         }
         if(pid>0){
@@ -170,9 +136,16 @@ int main(void)
         }
         if(chdir("/") < 0){
         /*Change the working directory to root*/
-                syslog(LOG_ERR, "Failed to change to root %s\n", strerror(errno));
+                syslog(LOG_ERR, "Failed to change to root: %m");
                 failedShutdown();
         }
+
+        /*Signal for closing application*/
+        signal(SIGQUIT, shutdown);
+        /*Signal for if and when the pipe breaks*/
+        signal(SIGPIPE, SIG_IGN);
+
+
         umask(0);
         close(STDIN_FILENO);
         close(STDOUT_FILENO);
@@ -188,7 +161,7 @@ int main(void)
         /*if the PID file is failed to be created, then the daemon is already
         * running
         */
-                syslog(LOG_ERR, "Failure to create PID file\n");
+                syslog(LOG_ERR, "Failure to create PID file: %m");
                 failedShutdown();
 
         }
@@ -198,15 +171,13 @@ int main(void)
                 snprintf(toWrite, 20, "%d", getpid());
                 if(0 > write(g_pidfile, toWrite, strlen(toWrite))){
                 /*Write PID to PID file*/
-                        syslog(LOG_ERR,
-                        "Failed to write to PID file%s\n",
-                        strerror(errno)
-                        );
+                        syslog(LOG_ERR, "Failed to write to PID file: %m");
                         failedShutdown();
                 }
 
 
         }
+
 
 
 	mkfifo(CAPS_FILE_DESC, 0666);
@@ -215,10 +186,7 @@ int main(void)
 	g_pipeLocation = open(CAPS_FILE_DESC, O_WRONLY);
 	/*Open the pipe and wait until there is a connection to it*/
 	if(g_pipeLocation <0){
-                syslog(LOG_ERR,
-                "Failed to open Program File Descriptor %s",
-                strerror(errno)
-                );
+                syslog(LOG_ERR, "Failed to open Program File Descriptor: %m");
                 failedShutdown();
 	}
 
@@ -262,10 +230,7 @@ int main(void)
                 Status_t status;
                 if(read(g_fd, &event, sizeof(struct input_event)) < 1){
                 /*Read an event */
-                        syslog(LOG_ERR,
-                                "Failed to read event file %s",
-                                strerror(errno)
-                                );
+                        syslog(LOG_ERR, "Failed to read event file: %m");
                         failedShutdown();
 
                 }
@@ -275,18 +240,12 @@ int main(void)
                         //but at least this gives some kind of protection
                         //in the event the event file cant be read
                         if(read(g_fd, &event, sizeof(struct input_event)) < 1){
-                                syslog(LOG_ERR,
-                                        "Failed to read event file %s",
-                                        strerror(errno)
-                                        );
+                                syslog(LOG_ERR,"Failed to read event file: %m");
                                 failedShutdown();
                         }
                         //read(g_fd, &event, sizeof(struct input_event));
                         if(read(g_fd, &event, sizeof(struct input_event)) < 1){
-                                syslog(LOG_ERR,
-                                        "Failed to read event file %s",
-                                        strerror(errno)
-                                        );
+                                syslog(LOG_ERR,"Failed to read event file: %m");
                                 failedShutdown();
                         }
                         /*For some reason the event pipe only gives off a single
@@ -296,11 +255,16 @@ int main(void)
                         if(cmpEventVals(event, EV_LED, MSC_PULSELED, HIGH)){
                                 /*if LED was set on*/
                                 status = CAPS_ON;
-                                if(write(g_pipeLocation, &status, 1) < 0){
+
+                                int rep = write(g_pipeLocation, &status, sizeof(Status_t));
                                 /*Write the caps lock state to the pipe*/
+                                if(rep < 0 && errno != EPIPE){
+                                /*if the write failed because the pipe is
+                                *broken, don't do anything, just scream into the
+                                *void. otherwise, display error and exit.
+                                */
                                         syslog(LOG_ERR,
-                                                "Failed to write to pipe: %s",
-                                                strerror(errno)
+                                                "Failed to write to pipe: %m"
                                                 );
                                         failedShutdown();
                                 }
@@ -309,29 +273,28 @@ int main(void)
                 if(cmpEventVals(event, EV_KEY, KEY_CAPSLOCK, LOW)){
                 /*On Caps Lock released*/
                         if(read(g_fd, &event, sizeof(struct input_event)) < 1){
-                                syslog(LOG_ERR,
-                                        "Failed to read event file %s",
-                                        strerror(errno)
-                                        );
+                                syslog(LOG_ERR,"Failed to read event file: %m");
                                 failedShutdown();
                         }
                         //read(g_fd, &event, sizeof(struct input_event));
                         if(read(g_fd, &event, sizeof(struct input_event)) < 1){
-                                syslog(LOG_ERR,
-                                        "Failed to read event file %s",
-                                        strerror(errno)
-                                        );
+                                syslog(LOG_ERR,"Failed to read event file: %m");
                                 failedShutdown();
                         }
                         /*burn an unwanted event*/
                         if(cmpEventVals(event, EV_LED, MSC_PULSELED, LOW)){
-                        /*if LED was set off*/
+                                /*if LED was set off*/
                                 status = CAPS_OFF;
-                                if(write(g_pipeLocation, &status, 1) < 0){
+
+                                int rep = write(g_pipeLocation, &status, sizeof(Status_t));
                                 /*write the caps lock status to the pipe*/
+                                if(rep < 0 && errno != EPIPE){
+                                /*if the write failed because the pipe is
+                                *broken, don't do anything, just scream into the
+                                *void. otherwise, display error and exit.
+                                */
                                         syslog(LOG_ERR,
-                                                "Failed to write to pipe: %s",
-                                                strerror(errno)
+                                                "Failed to write to pipe: %m"
                                                 );
                                         failedShutdown();
                                 }

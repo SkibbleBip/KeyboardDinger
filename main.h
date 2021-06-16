@@ -28,12 +28,17 @@ const char* CAPS_FILE_DESC = "/tmp/caps_lock";
  (Currently only caps lock is in use)
  */
 typedef enum {  CAPS_ON,
-                CAPS_OFF,
                 NUM_ON,
-                NUM_OFF,
                 SCROLL_ON,
+                CAPS_OFF,
+                NUM_OFF,
                 SCROLL_OFF
         } Status_t;
+
+#define TOGGLE_AXIS 3
+/*when comparing if a key state has been set on or off, rather than doing
+* "if else if else" for key states for playing audible notes, one just needs
+* to check if state < TOGGLE_AXIS then play ding on, else play dong off*/
 
 /***************************************************************************
 * int PID_Lock(char* path, int *pidfile)

@@ -47,7 +47,7 @@ int getKeyboardInputDescriptor(void)
 
         if(deviceList == NULL){
                 //fprintf(stderr, "Error, failed to read %s: %d\n",fileName, errno);
-                syslog(LOG_ERR, "Failed to read %s %s", fileName, strerror(errno));
+                syslog(LOG_ERR, "Failed to read %s %m", fileName);
                 exit(-1);
         }
         //uint c = 0;
@@ -63,19 +63,22 @@ int getKeyboardInputDescriptor(void)
                         }
                         if(fgets(buffer, 512, deviceList) == NULL){
                                 syslog(LOG_ERR,
-                                "Failed to read devices list: %s",
-                                strerror(errno)); exit(-1);
+                                        "Failed to read devices list: %m"
+                                        );
+                                exit(-1);
                         }
                         if(fgets(buffer, 512, deviceList) == NULL){
                                 syslog(LOG_ERR,
-                                "Failed to read devices list: %s",
-                                strerror(errno)); exit(-1);
+                                "Failed to read devices list: %m"
+                                        );
+                                exit(-1);
                         }
                         result = fgets(buffer, 512, deviceList);
                         if(result == NULL){
                                 syslog(LOG_ERR,
-                                "Failed to read devices list: %s",
-                                strerror(errno)); exit(-1);
+                                        "Failed to read devices list: %m"
+                                        );
+                                exit(-1);
                         }
                         result = strstr(result, "event");
                         strtok(result, " ");
@@ -90,16 +93,14 @@ int getKeyboardInputDescriptor(void)
         int fd = open(full_path, O_RDONLY );
         //perror("opening");
         if(fd == -1){
-                syslog(LOG_ERR,
-                "Error opening %s: %s\n", full_path, strerror(errno)
-                );
+                syslog(LOG_ERR, "Error opening %s: %m", full_path);
                 exit(-1);
         }
 
         return fd;
 }
 /***************************************************************************
-* int cmpEventVals(struct input_event e, wavByte_t t, wavByte_t c, wavByte_t v)
+* int cmpEventVals(struct input_event e, ushort t, ushort c, int v)
 * Author: SkibbleBip
 * Date: 06/03/2021
 * Description: Function that compares an input event struct with inputted types,
@@ -108,13 +109,13 @@ int getKeyboardInputDescriptor(void)
 *
 * Parameters:
 *        e      I/P     struct input_event      The input event to compare
-*        y      I/P     wavByte_t       the type to test the event with
-*        c      I/P     wavByte_t       The code to test the event with
-*        v      I/P     wavByte_t       the value to test the event with
+*        y      I/P     ushort                  the type to test the event with
+*        c      I/P     ushort                  The code to test the event with
+*        v      I/P     int                     the value to test the event with
 *        cmpEventVals   O/P     int     Bool return of whether the comparison
 *                                       succedes or not
 **************************************************************************/
-int cmpEventVals(struct input_event e, wavByte_t t, wavByte_t c, wavByte_t v)
+int cmpEventVals(struct input_event e, ushort t, ushort c, int v)
 {
         if(e.type == t && e.code == c && e.value == v)
                 return 1;
