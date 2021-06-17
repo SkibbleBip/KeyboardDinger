@@ -141,6 +141,11 @@ int getLastEvent(int fd, struct input_event* event, uint loops)
 int main(void)
 {
 
+        if(getuid() != 0){
+                printf("Must be run as root\n");
+                syslog(LOG_ERR, "Must be run as root\n");
+                exit(0);
+        }
 
         //g_sid = 0;
         pid_t pid = fork();
