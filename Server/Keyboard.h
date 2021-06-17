@@ -58,8 +58,9 @@ int getKeyboardInputDescriptor(void)
                         syslog(LOG_NOTICE, "Keyboard device found: %s", result);
                         if(fgets(buffer, 512, deviceList) == NULL){
                                 syslog(LOG_ERR,
-                                "Failed to read devices list: %s",
-                                strerror(errno)); exit(-1);
+                                        "Failed to read devices list: %m",
+                                        );
+                                exit(-1);
                         }
                         if(fgets(buffer, 512, deviceList) == NULL){
                                 syslog(LOG_ERR,

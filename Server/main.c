@@ -6,6 +6,9 @@
 *                               and cleanly eit with status -1 on occurance of
 *                               an error
 * shutdown              -Signal handler to process the shutdown procedures
+* getLastEvent          -Function that reads an event device file described by
+*                               fd 'loops' amount of times and returns through
+*                               reference the last event read
 * main                  -The main function
 ***************************************************************************/
 
@@ -86,6 +89,42 @@ void shutdown(int sig)
 
 	syslog(LOG_NOTICE, "Closed. Goodbye!");
 	exit(0);
+
+}
+/***************************************************************************
+* int getLastEvent(int fd, struct input_event* event, uint loops)
+* Author: SkibbleBip
+* Date: 06/17/2021
+* Description: Function that reads an event device file described by fd 'loops'
+*       amount of times and returns through reference the last event read
+*
+* Parameters:
+*        fd     I/P     int                     file descriptor value
+*        event  I/O     struct input_event*     The final event read and to be
+*                                                       passed back through
+*                                                       reference
+*        loops  I/P     uint                    the number of times to read an
+*                                                       event
+*        getLastEvent   O/P     int             boolean return value of whether
+*                                                       a failure occured or not
+**************************************************************************/
+int getLastEvent(int fd, struct input_event* event, uint loops)
+{
+        uint sizeRead = 0;
+        const uint eSize = sizeof(struct input_event);
+        while(sizeRead < loops*eSize){
+        /*continuously read 'loops' amount of events, and return through
+        *reference the last event read.*/
+                int q = read(fd, event, eSize);
+
+                if(q < 0)
+                        return 0;
+                else
+                        sizeRead+=q;
+
+        }
+
+        return 1;
 
 }
 
@@ -236,21 +275,14 @@ int main(void)
                 }
                 if(cmpEventVals(event, EV_KEY, KEY_CAPSLOCK, HIGH)){
                 /*on Caps lock depressed*/
-                        //There's probably a better way to do this,
-                        //but at least this gives some kind of protection
-                        //in the event the event file cant be read
-                        if(read(g_fd, &event, sizeof(struct input_event)) < 1){
-                                syslog(LOG_ERR,"Failed to read event file: %m");
-                                failedShutdown();
-                        }
-                        //read(g_fd, &event, sizeof(struct input_event));
-                        if(read(g_fd, &event, sizeof(struct input_event)) < 1){
-                                syslog(LOG_ERR,"Failed to read event file: %m");
-                                failedShutdown();
-                        }
                         /*For some reason the event pipe only gives off a single
                         *event at one time. so we need to burn an event
                         */
+                        if(!getLastEvent(g_fd, &event, 2)){
+                                syslog(LOG_ERR,"Failed to read event file: %m");
+                                failedShutdown();
+                        }
+
 
                         if(cmpEventVals(event, EV_LED, MSC_PULSELED, HIGH)){
                                 /*if LED was set on*/
@@ -272,12 +304,8 @@ int main(void)
                 }
                 if(cmpEventVals(event, EV_KEY, KEY_CAPSLOCK, LOW)){
                 /*On Caps Lock released*/
-                        if(read(g_fd, &event, sizeof(struct input_event)) < 1){
-                                syslog(LOG_ERR,"Failed to read event file: %m");
-                                failedShutdown();
-                        }
-                        //read(g_fd, &event, sizeof(struct input_event));
-                        if(read(g_fd, &event, sizeof(struct input_event)) < 1){
+
+                        if(!getLastEvent(g_fd, &event, 2)){
                                 syslog(LOG_ERR,"Failed to read event file: %m");
                                 failedShutdown();
                         }
