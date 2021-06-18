@@ -444,14 +444,14 @@ void pollEvent(Sound_Device *dev/*, bool *stuck*/){
         else{
                 //*stuck = false;
 
-                if(received==CAPS_ON){
+                if(received < TOGGLE_AXIS){
                 /*If the received data is a caps on enum, then play the rising
                 * ding
                 */
                         playSound(Caps_On_wav, Caps_On_wav_size, dev);
 
                 }
-                else if(received == CAPS_OFF){
+                else /*if(received == CAPS_OFF)*/{
                 /*If the received data is a caps off enum, then play the
                 * falling dong
                 */

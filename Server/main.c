@@ -6,9 +6,6 @@
 *                               and cleanly eit with status -1 on occurance of
 *                               an error
 * shutdown              -Signal handler to process the shutdown procedures
-* getLastEvent          -Function that reads an event device file described by
-*                               fd 'loops' amount of times and returns through
-*                               reference the last event read
 * main                  -The main function
 ***************************************************************************/
 
@@ -91,42 +88,7 @@ void shutdown(int sig)
 	exit(0);
 
 }
-/***************************************************************************
-* int getLastEvent(int fd, struct input_event* event, uint loops)
-* Author: SkibbleBip
-* Date: 06/17/2021
-* Description: Function that reads an event device file described by fd 'loops'
-*       amount of times and returns through reference the last event read
-*
-* Parameters:
-*        fd     I/P     int                     file descriptor value
-*        event  I/O     struct input_event*     The final event read and to be
-*                                                       passed back through
-*                                                       reference
-*        loops  I/P     uint                    the number of times to read an
-*                                                       event
-*        getLastEvent   O/P     int             boolean return value of whether
-*                                                       a failure occured or not
-**************************************************************************/
-int getLastEvent(int fd, struct input_event* event, uint loops)
-{
-        uint sizeRead = 0;
-        const uint eSize = sizeof(struct input_event);
-        while(sizeRead < loops*eSize){
-        /*continuously read 'loops' amount of events, and return through
-        *reference the last event read.*/
-                int q = read(fd, event, eSize);
 
-                if(q < 0)
-                        return 0;
-                else
-                        sizeRead+=q;
-
-        }
-
-        return 1;
-
-}
 
 
 /***************************************************************************
@@ -147,7 +109,7 @@ int main(void)
                 exit(0);
         }
 
-        //g_sid = 0;
+
         pid_t pid = fork();
         /*Fork the first time*/
         if(pid < 0){
@@ -239,37 +201,37 @@ int main(void)
         g_fd = getKeyboardInputDescriptor();
         /*obtain the keyboard event file descriptor*/
 
-        while(1){
-                //pollKeyboard(g_fd);
-                struct input_event event;
-                /*The order the events occur in the event file is as such:
-                *
-                *Caps On:
-                *       [EV_MSC, MSC_SCAN, KEY_CAPSLOCK]  capslock is changed
-                *       [EV_KEY,  KEY_CAPSLOCK,     1  ]  capslock is depressed
-                *       [EV_SYN,     EV_SYN,        0  ]  Sync event
-                *       [EV_LED,  MSC_PULSELED      1  ]  LED is High
-                *       [EV_SYN,     EV_SYN,        0  ]  Sync event
-                *       [EV_MSC, MSC_SCAN, KEY_CAPSLOCK]  capslock is changed
-                *       [EV_KEY,  KEY_CAPSLOCK,     0  ]  capslock is released
-                *       [EV_SYN,     EV_SYN,        0  ]  Sync event
-                *
-                *Caps Off:
-                *       [EV_MSC, MSC_SCAN, KEY_CAPSLOCK]  capslock is changed
-                *       [EV_KEY,  KEY_CAPSLOCK,     1  ]  capslock is depressed
-                *       [EV_SYN,     EV_SYN,        0  ]  Sync event
-                *       [EV_MSC, MSC_SCAN, KEY_CAPSLOCK]  capslock is changed
-                *       [EV_KEY,  KEY_CAPSLOCK,     0  ]  capslock is released
-                *       [EV_SYN,     EV_SYN,        0  ]  Sync event
-                *       [EV_LED,  MSC_PULSELED      0  ]  LED is Low
-                *       [EV_SYN,     EV_SYN,        0  ]  Sync event
-                *
-                */
-                /*For each key press, the depress action and release action are
-                *both logged. Because the Caps Lock also triggers the keyboard
-                *LEDs, on caps on mid-stroke the LED is triggered on and post-
-                *release the LED is triggered off for caps off.*/
 
+        /*Every time the OS updates the state of the lock key, it sends an
+        * event to the attached keyboards to inform them that the LED to the
+        * partaining lock key needs to light up. We can catch these events and
+        * decode them to figure out which LEDS are being set to what state.
+        * This makes it easy to handle different keyboards as each keyboard is
+        * sent the same struct when the LED has it's state changed.
+        *
+        * The signals are as follows:
+        *
+        * Caps on:
+        *       [EV_LED]  [LED_CAPSL]  [1]
+        *
+        * Caps off:
+        *       [EV_LED]  [LED_CAPSL]  [0]
+        *
+        * Num on:
+        *       [EV_LED]  [LED_NUML]   [1]
+        *
+        * Num off:
+        *       [EV_LED]  [LED_NUML]   [0]
+        *
+        * Sroll on:
+        *       [EV_LED] [LED_SCROLLL] [1]
+        *
+        * Scroll off:
+        *       [EV_LED] [LED_SCROLLL] [0]
+        */
+
+        while(1){
+                struct input_event event;
 
                 Status_t status;
                 if(read(g_fd, &event, sizeof(struct input_event)) < 1){
@@ -278,62 +240,43 @@ int main(void)
                         failedShutdown();
 
                 }
-                if(cmpEventVals(event, EV_KEY, KEY_CAPSLOCK, HIGH)){
-                /*on Caps lock depressed*/
-                        /*For some reason the event pipe only gives off a single
-                        *event at one time. so we need to burn an event
+                /*check if the event mathces one of the states where an LED
+                *changes
+                */
+                if(cmpEventVals(event, EV_LED, LED_CAPSL, HIGH)){
+                        status = CAPS_ON;
+                }
+                else if(cmpEventVals(event, EV_LED, LED_CAPSL, LOW)){
+                        status = CAPS_OFF;
+                }
+                else if(cmpEventVals(event, EV_LED, LED_NUML, HIGH)){
+                        status = NUM_ON;
+                }
+                else if(cmpEventVals(event, EV_LED, LED_NUML, LOW)){
+                        status = NUM_OFF;
+                }
+                else if(cmpEventVals(event, EV_LED, LED_SCROLLL, HIGH)){
+                        status = SCROLL_ON;
+                }
+                else if(cmpEventVals(event, EV_LED, LED_SCROLLL, LOW)){
+                        status = SCROLL_OFF;
+                }
+                else{
+                /*if no LED state is detected, then simply continue*/
+                        continue;
+                }
+                ///TODO: Need someone to check if scroll lock works, none of my
+                ///keyboards actually have a scroll lock key apparently
+                int rep = write(g_pipeLocation, &status, sizeof(Status_t));
+
+                if(rep == -1 && errno != EPIPE){
+                        /*if the write failed because the pipe is
+                        *broken, don't do anything, just scream into the
+                        *void. otherwise, display error and exit.
                         */
-                        if(!getLastEvent(g_fd, &event, 2)){
-                                syslog(LOG_ERR,"Failed to read event file: %m");
-                                failedShutdown();
-                        }
-
-
-                        if(cmpEventVals(event, EV_LED, MSC_PULSELED, HIGH)){
-                                /*if LED was set on*/
-                                status = CAPS_ON;
-
-                                int rep = write(g_pipeLocation, &status, sizeof(Status_t));
-                                /*Write the caps lock state to the pipe*/
-                                if(rep < 0 && errno != EPIPE){
-                                /*if the write failed because the pipe is
-                                *broken, don't do anything, just scream into the
-                                *void. otherwise, display error and exit.
-                                */
-                                        syslog(LOG_ERR,
-                                                "Failed to write to pipe: %m"
-                                                );
-                                        failedShutdown();
-                                }
-                        }
+                        syslog(LOG_ERR, "Failed to write to pipe: %m");
+                        failedShutdown();
                 }
-                if(cmpEventVals(event, EV_KEY, KEY_CAPSLOCK, LOW)){
-                /*On Caps Lock released*/
-
-                        if(!getLastEvent(g_fd, &event, 2)){
-                                syslog(LOG_ERR,"Failed to read event file: %m");
-                                failedShutdown();
-                        }
-                        /*burn an unwanted event*/
-                        if(cmpEventVals(event, EV_LED, MSC_PULSELED, LOW)){
-                                /*if LED was set off*/
-                                status = CAPS_OFF;
-
-                                int rep = write(g_pipeLocation, &status, sizeof(Status_t));
-                                /*write the caps lock status to the pipe*/
-                                if(rep < 0 && errno != EPIPE){
-                                /*if the write failed because the pipe is
-                                *broken, don't do anything, just scream into the
-                                *void. otherwise, display error and exit.
-                                */
-                                        syslog(LOG_ERR,
-                                                "Failed to write to pipe: %m"
-                                                );
-                                        failedShutdown();
-                                }
-                        }
-                }
-
 
         }
 
