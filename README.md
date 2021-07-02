@@ -8,5 +8,7 @@ Sound is played using the ALSA API and the application consists of a server and 
 to scan the keyboard event file for caps lock inputs, and sends data to a FIFO pipe which is read by the client. The client runs at user level
 and checks the data sent by the FIFO pipe and plays sounds in accordance to what state the caps lock is in.
 
-Currently only Caps Lock is supported, in the future I may add Num Lock and Scroll Lock support.
-I also plan on making the server also compatable with being compiled as a kernel module.
+~~Currently only Caps Lock is supported, in the future I may add Num Lock and Scroll Lock support.
+I also plan on making the server also compatable with being compiled as a kernel module.~~ 
+I have completed the ability to use it for all the lock keys including scroll and num lock, however I need someone to test out the scroll lock
+dinging because apparently my scroll lock on my pc doesn't work and I have no other keyboards with a scroll lock.
